@@ -3,6 +3,10 @@ var qs = require('querystring');
 var url = require('url');
 var parseString = require('xml2js').parseString;
 var _ = require('lodash');
+var fs = require('fs');
+var peg = require('pegjs');
+
+var parser = peg.buildParser(fs.readFileSync('lucene-query.grammar', {encoding: 'utf8'}));
 
 
 var DB = {};
@@ -10,21 +14,48 @@ var SCORE = 0.48526156;
 
 
 function findEntries(query) {
-    var parsed = /\(repository:(\d+) AND (.+)\)/.exec(query),
-        repository = parseInt(parsed[1], 10),
-        searchQuery = parsed[2];
+    var searchQuery = parser.parse(query).left,
+        term, repositoryIndex, mimetype;
 
-    if (searchQuery === "*") return _.toArray(DB);
+    if (searchQuery.field === '*' && searchQuery.term === '*') return _.toArray(DB);
 
-    // Try to transform the Solr query into a Regex
-    searchQuery = searchQuery.replace(/"/g, '');
-    searchQuery = searchQuery.replace(/\?/g, '.');
+    repositoryIndex = parseInt(searchQuery.left.term, 10);
 
-    searchQuery = new RegExp(searchQuery, "i");
+    // TODO: This should be done with recursion
+    if (searchQuery.right.term) {
+        term = searchQuery.right.term;
+    } else if (searchQuery.right.right.left.field === 'mimetype') {
+        mimetype = searchQuery.right.right.left.term;
+    }
+
+    if (term) {
+        if (term === "*") return _.toArray(DB);
+
+        // Try to transform the Solr query into a Regex
+        term = term.replace(/"/g, '');
+        term = term.replace(/\?/g, '.');
+
+        term = new RegExp(term, "i");
+    }
+
+    if (mimetype) {
+        mimetype = mimetype.replace(/\*/g, '.*');
+
+        mimetype = new RegExp(mimetype, "i");
+    }
 
     return _.filter(DB, function (entry, id) {
-        return searchQuery.test(entry.text) &&
-               entry.repository === repository;
+        if (entry.repository !== repositoryIndex) {
+            return false;
+        }
+
+        if (term) {
+            return term.test(entry.text);
+        }
+
+        if (mimetype) {
+            return mimetype.test(entry.mimetype);
+        }
     });
 }
 
