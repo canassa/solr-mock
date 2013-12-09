@@ -129,6 +129,7 @@ function route(req, res, body, queryData) {
     }
 }
 
+PORT = process.argv[2] || 1337;
 
 http.createServer(function (req, res) {
     var queryData = url.parse(req.url, true).query,
@@ -141,4 +142,4 @@ http.createServer(function (req, res) {
     req.on('end', function () {
         route(req, res, body, queryData);
     });
-}).listen(1337, '0.0.0.0');
+}).listen(PORT, '0.0.0.0');
